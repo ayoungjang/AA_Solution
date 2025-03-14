@@ -1,0 +1,129 @@
+/* http://meyerweb.com/eric/tools/css/reset/
+   v5.0.2 | 20191019
+   License: none (public domain)
+*/
+
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed,
+figure, figcaption, footer, header, hgroup,
+main, menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 100%;
+	font: inherit;
+	vertical-align: baseline;
+	
+}
+/* HTML5 display-role reset for older browsers */
+article, aside, details, figcaption, figure,
+footer, header, hgroup, main, menu, nav, section {
+	display: block;
+}
+/* HTML5 hidden-attribute fix for newer browsers */
+*[hidden] {
+    display: none;
+}
+html{
+	font-size: 20px;
+	height: 100%;
+	@media (max-width: 768px){
+    font-size: 16px;
+  }
+}
+body {
+	font-size: 1rem;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	line-height: 1;
+	font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+
+
+}
+menu, ol, ul {
+	list-style: none;
+}
+blockquote, q {
+	quotes: none;
+}
+blockquote:before, blockquote:after,
+q:before, q:after {
+	content: '';
+	content: none;
+}
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+
+a:link{
+	text-decoration: none;
+}
+
+a:visited,a:active{
+	color: #222;
+}
+
+
+input[type="text"],input[type="number"]{
+
+border-radius: 6px;
+border: 1px solid #b2b2b2;
+    padding:0.7rem 1rem;
+    font-size: 0.8rem;
+    flex:1;
+    box-sizing: border-box;
+	
+}
+
+input:focus{
+		outline: none;
+}
+input::placeholder{
+		color: #ebebeb
+}
+
+::-webkit-scrollbar {
+	width: 3px;
+	height: 3px;
+}
+
+::-webkit-scrollbar-track {
+	background-color: #9b9b9b;
+}
+
+::-webkit-scrollbar-thumb {
+	background: #222;
+	border-radius: 10px;
+	border: 5px solid transparent;  /* 투명한 테두리 추가 */
+}
+select {
+	margin-left: 0.5rem;
+	padding: 0.3rem;
+	border-radius: 0.3rem;
+	border: 1px solid #ccc;
+}
+
+input[type="radio"]{
+	margin: 0 5px 0 0;
+
+	@media (max-width: 768px) {
+		margin: 0 2px 0 0; 
+  } 
+}
+
+a{
+	color: inherit; 
+
+}
