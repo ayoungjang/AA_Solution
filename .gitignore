@@ -197,7 +197,7 @@ devenv.local.nix
 #frontend
 ./front/dist
 ./front/.cpcache
-
+./front/target
 
 #backend
 
