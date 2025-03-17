@@ -4,12 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.6"
+axum = { version = "0.6", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 calamine = "0.17"
-multipart = "0.4"
 tower = "0.4"
 tokio-util = "0.6"
-utoipa-swagger-ui = "9.0"  # For serving Swagger UI
+openssl = "0.10"
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "4", features = ["axum"] }

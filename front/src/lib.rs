@@ -41,7 +41,7 @@ pub fn App() -> Html {
 }
 
 // Function to upload the file to the server
-fn upload_file_to_server(file: File) {
+fn upload_file_to_server(_file: File) {
     // let form_data = FormData::new().unwrap();
     // form_data.append_with_blob("file", &file).unwrap();
 

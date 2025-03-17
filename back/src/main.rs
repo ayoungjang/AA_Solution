@@ -1,87 +1,90 @@
 use axum::{
     routing::post,
-    Router,
     extract::Multipart,
+    Router,
     http::StatusCode,
-    response::{IntoResponse, Json}
+    response::{IntoResponse, Json},
 };
-use calamine::{open_workbook_auto, Reader, RangeDeserializerBuilder};
+use std::net::SocketAddr;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use std::path::Path;
-use serde::{Serialize, Deserialize};
-use futures::stream::StreamExt;
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
+use serde::Serialize;
 
-#[tokio::main]
-async fn main() {
-    // Create the app
-    let app = Router::new()
-        .route("/api/upload", post(upload_file)); // POST route for file upload
+#[derive(OpenApi)]
+#[openapi(
+    paths(upload_file),
+    components(schemas(UploadResponse)),
+    tags((name = "File Upload", description = "Endpoints for file upload"))
+)]
+struct ApiDoc;
 
-    // Run the server on port 8080
-    axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
-}
-
-// Define a structure to handle the response
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, ToSchema)]
 struct UploadResponse {
     filename: String,
     message: String,
 }
 
-// Handle file upload
-async fn upload_file(mut multipart: Multipart) -> impl IntoResponse {
-    // Extract file data from multipart form
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        let content_disposition = field.content_disposition().unwrap();
-        let filename = content_disposition.get_filename().unwrap_or("file");
 
-        // Read file into memory
-        let bytes = field.bytes().await.unwrap();
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/upload", post(upload_file))
+        .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
-        // Optionally, save the file to disk
-        let filepath = Path::new("uploads").join(filename);
-        let mut file = File::create(&filepath).await.unwrap();
-        file.write_all(&bytes).await.unwrap();
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    println!("🚀 Server running at http://{}", addr);
+    println!("📜 API Docs available at http://{}/docs", addr);
 
-        // Process the Excel file (if necessary)
-        if let Err(e) = process_excel_file(&bytes).await {
-            return (StatusCode::INTERNAL_SERVER_ERROR, format!("Error processing file: {}", e)).into_response();
-        }
-
-        // Return success response
-        let response = UploadResponse {
-            filename: filename.to_string(),
-            message: "File uploaded and processed successfully".to_string(),
-        };
-
-        return (StatusCode::OK, Json(response)).into_response();
-    }
-
-    (StatusCode::BAD_REQUEST, "No file uploaded").into_response()
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
-// Function to process the Excel file using calamine
-async fn process_excel_file(file_bytes: &[u8]) -> Result<(), String> {
-    // Open the Excel file from memory
-    let mut workbook = open_workbook_auto(file_bytes).map_err(|e| e.to_string())?;
+// 파일 업로드 핸들러
+#[utoipa::path(
+    post,
+    path = "/upload",
+    request_body(
+        content = String,
+        description = "File to upload",
+        content_type = "multipart/form-data"
+    ),
+    responses(
+        (status = 200, description = "File uploaded successfully", body = UploadResponse),
+        (status = 400, description = "No file uploaded", body = UploadResponse),
+    )
+)]
 
-    // Get the first sheet
-    if let Some(Ok(range)) = workbook.worksheet_range_at(0) {
-        // Read the first sheet's first row
-        let mut iter = RangeDeserializerBuilder::new().from_range(&range).unwrap();
-        if let Some(Ok(record)) = iter.next() {
-            // Example: log the first value of the first row (or do more complex parsing)
-            if let Some(first_value) = record.get(0) {
-                println!("First cell value: {}", first_value);
-            }
-        }
-    } else {
-        return Err("Failed to read the first sheet".to_string());
+async fn upload_file(mut multipart: Multipart) -> impl IntoResponse {
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        let filename = field.file_name().unwrap_or("unknown_file").to_string();
+        let data = field.bytes().await.unwrap();
+
+        println!("📂 Received file: {} ({} bytes)", filename, data.len());
+
+        // 파일 저장
+        let filepath = Path::new("uploads").join(&filename);
+        let mut file = File::create(&filepath).await.unwrap();
+        file.write_all(&data).await.unwrap();
+
+        return (
+            StatusCode::OK,
+            Json(UploadResponse {
+                filename,
+                message: "File uploaded successfully!".to_string(),
+            }),
+        );
     }
 
-    Ok(())
+    (
+        StatusCode::BAD_REQUEST,
+        Json(UploadResponse {
+            filename: "".to_string(),
+            message: "No file uploaded".to_string(),
+        }),
+    )
 }

@@ -12,7 +12,6 @@
     pkgs.llvm
     pkgs.cargo
     pkgs.lld
-    pkgs.openssl
   ];
 
   # Enable Rust for both frontend and backend
