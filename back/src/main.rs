@@ -1,90 +1,121 @@
 use axum::{
+    extract::{Multipart, Path},
+    response::{IntoResponse, Json},
     routing::post,
-    extract::Multipart,
     Router,
     http::StatusCode,
-    response::{IntoResponse, Json},
 };
+use hyper::Server;
 use std::net::SocketAddr;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
-use std::path::Path;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
-use serde::Serialize;
-
-#[derive(OpenApi)]
-#[openapi(
-    paths(upload_file),
-    components(schemas(UploadResponse)),
-    tags((name = "File Upload", description = "Endpoints for file upload"))
-)]
-struct ApiDoc;
+use serde::{Serialize, Deserialize};
+use calamine::{Reader, Xlsx, DataType};
+use std::collections::HashMap;
+use std::io::Cursor;
 
 #[derive(Serialize, ToSchema)]
-struct UploadResponse {
+pub struct UploadResponse {
     filename: String,
     message: String,
 }
 
-
-#[tokio::main]
-async fn main() {
-    let app = Router::new()
-        .route("/upload", post(upload_file))
-        .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()));
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    println!("🚀 Server running at http://{}", addr);
-    println!("📜 API Docs available at http://{}/docs", addr);
-
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+#[derive(Deserialize, ToSchema)]
+pub struct UploadForm {
+    #[schema(format = "binary")]
+    file: String
 }
 
-// 파일 업로드 핸들러
 #[utoipa::path(
     post,
-    path = "/upload",
+    path = "/proportion/{bacteria}",
+    params(
+        ("bacteria" = String, Path, description = "Name of the bacteria")
+    ),
     request_body(
-        content = String,
-        description = "File to upload",
-        content_type = "multipart/form-data"
+        content = UploadForm,
+        content_type = "multipart/form-data",
+        description = "Excel file to upload"
     ),
     responses(
         (status = 200, description = "File uploaded successfully", body = UploadResponse),
         (status = 400, description = "No file uploaded", body = UploadResponse),
     )
 )]
+pub async fn upload_file(Path(bacteria): Path<String>, mut multipart: Multipart) -> impl IntoResponse {
+    println!("Received bacteria: {}", bacteria);
 
-async fn upload_file(mut multipart: Multipart) -> impl IntoResponse {
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        let filename = field.file_name().unwrap_or("unknown_file").to_string();
+    if let Some(field) = multipart.next_field().await.unwrap() {
+        println!("Received a file field: {:?}", field.name());
+
         let data = field.bytes().await.unwrap();
+        let cursor = Cursor::new(&data);
+        let mut workbook = Xlsx::new(cursor).unwrap();
+        let range = workbook.worksheet_range_at(0).unwrap().unwrap();
 
-        println!("📂 Received file: {} ({} bytes)", filename, data.len());
+        let mut year_sum: HashMap<i32, (f64, usize)> = HashMap::new();
 
-        // 파일 저장
-        let filepath = Path::new("uploads").join(&filename);
-        let mut file = File::create(&filepath).await.unwrap();
-        file.write_all(&data).await.unwrap();
+        for row in range.rows().skip(1) {
+            let year = match row.get(0) {
+                Some(DataType::Int(val)) => *val as i32,
+                Some(DataType::Float(val)) => *val as i32,
+                Some(DataType::String(s)) => s.parse::<i32>().unwrap_or(0),
+                _ => continue,
+            };
 
-        return (
-            StatusCode::OK,
-            Json(UploadResponse {
-                filename,
-                message: "File uploaded successfully!".to_string(),
-            }),
-        );
+            let value = match row.get(1) {
+                Some(DataType::Float(val)) => *val,
+                Some(DataType::Int(val)) => *val as f64,
+                Some(DataType::String(s)) => s.parse::<f64>().unwrap_or(0.0),
+                _ => continue,
+            };
+
+            let entry = year_sum.entry(year).or_insert((0.0, 0));
+            entry.0 += value;
+            entry.1 += 1;
+        }
+
+        println!("📊 Proportion Result: {:?}", year_sum);
+
+        return (StatusCode::OK, Json(UploadResponse {
+            filename: "".to_string(),
+            message: format!("Proportion calculated for bacteria: {}", bacteria),
+        }));
     }
 
-    (
-        StatusCode::BAD_REQUEST,
-        Json(UploadResponse {
-            filename: "".to_string(),
-            message: "No file uploaded".to_string(),
-        }),
+    (StatusCode::BAD_REQUEST, Json(UploadResponse {
+        filename: "".to_string(),
+        message: "No file uploaded".to_string(),
+    }))
+}
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        upload_file
+    ),
+    components(
+        schemas(UploadResponse, UploadForm)
+    ),
+    tags(
+        (name = "Proportion API", description = "Upload Excel and Calculate proportion")
     )
+)]
+pub struct ApiDoc;
+
+#[tokio::main]
+async fn main() {
+    println!("🚀 Starting server...");
+    let app = Router::new()
+        .route("/proportion/{bacteria}", post(upload_file))
+        .merge(SwaggerUi::new("/api/docs").url("/api-docs/openapi.json", ApiDoc::openapi()));
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    println!("🚀 Server running at http://{}", addr);
+    println!("📄 Swagger API Docs at http://{}/docs", addr);
+
+    Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }

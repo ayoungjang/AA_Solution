@@ -5,12 +5,15 @@ edition = "2021"
 
 [dependencies]
 axum = { version = "0.6", features = ["multipart"] }
-tokio = { version = "1", features = ["full"] }
+utoipa = { version = "3", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "3", features = ["axum"] }
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] } 
 serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
-calamine = "0.17"
-tower = "0.4"
-tokio-util = "0.6"
-openssl = "0.10"
-utoipa = { version = "4", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "4", features = ["axum"] }
+serde_json = "1"
+csv = "1"               # CSV 파일 읽기/쓰기
+calamine = "0.18"       # 엑셀 파일 읽기
+tower = "0.4"           # 미들웨어
+uuid = { version = "1", features = ["v4"] }     # 파일 이름 생성용
+mime = "0.3"            # 파일 타입 파악
+multipart = "0.18"      # 파일 업로드용
