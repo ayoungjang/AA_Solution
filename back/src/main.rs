@@ -9,38 +9,52 @@ use std::net::SocketAddr;
 use hyper::Server;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use tower_http::trace::TraceLayer;
 
+use chrono::Local;
 use axum::extract::DefaultBodyLimit; //for file upload size upgrade
 
-use tower_http::trace::TraceLayer;
 use tracing_subscriber;
 
-mod routes;
 mod docs;
-
+mod routes;
 
 async fn handler_404(request: HttpRequest<hyper::Body>) -> impl IntoResponse {
-    let path = request.uri().path(); // ✅ 요청 경로 가져오기
+    let path = request.uri().path
+    (); 
     println!("🚨 404 fallback: unmatched path => {}", path);
 
     (StatusCode::NOT_FOUND, format!("404 Not Found: {}", path))
 }
+
+
+
 #[tokio::main]
 async fn main() {
-    // tracing 초기화
-    tracing_subscriber::fmt::init();  // 👈 추가
+    // tracing init
+    tracing_subscriber::fmt::init();
 
-    println!("🚀 Starting server...");
+    println!("🚀 Starting server at {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
 
-    let app = Router::new()
-        .route("/proportion/{bacteria}", post(routes::excel::upload_file))
-        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
-        .merge(
-            SwaggerUi::new("/docs")
-                .url("/api-docs/openapi.json", docs::ApiDoc::openapi()), 
-        )
+    // let app = Router::new()
+    // // .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+    // .merge(
+    //     SwaggerUi::new("/docs")
+    //     .url("/api-docs/openapi.json", docs::ApiDoc::openapi()), 
+    // )
+    // .route("/proportion/{bacteria}", post(routes::excel::upload_file))
+    //     .layer(TraceLayer::new_for_http())
+    //     .fallback(handler_404); //404 handler middleware.
+    
+     let app = Router::new()
+        .route("/proportion/:bacteria", post(routes::excel::upload_file)) 
+        .route("/test", post(routes::excel::test_api))
         .layer(TraceLayer::new_for_http())
-        .fallback(handler_404);
+        .merge(
+            SwaggerUi::new("/docs")                           // ✅ Swagger UI 나중에
+                .url("/api-docs/openapi.json", docs::ApiDoc::openapi()),
+        )
+        .fallback(handler_404);                               // ✅ fallback
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     println!("🚀 Server running at http://{}", addr);

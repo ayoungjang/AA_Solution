@@ -1,26 +1,33 @@
-use utoipa::{OpenApi, ToSchema};
-use utoipa_swagger_ui::SwaggerUi;
+use axum::{
+    extract::Path,
+    response::{IntoResponse, Json},
+    http::StatusCode,
+};
 use serde::{Serialize, Deserialize};
+use utoipa::{OpenApi, ToSchema};
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct UploadResponse {
-    pub message : String,
+    pub message: String,
 }
 #[derive(serde::Deserialize, ToSchema)]
 pub struct UploadForm {
     #[schema(format = "binary")]
-    pub file: String
+    file: String,
 }
-// OpenAPI docs
+
 #[derive(OpenApi)]
 #[openapi(
-    paths(crate::routes::excel::upload_file),  
-    components(schemas(UploadResponse, UploadForm)),
+    paths(
+        crate::routes::excel::upload_file,
+        crate::routes::excel::test_api
+    ),
+    components(
+        schemas(UploadForm,UploadResponse)
+    ),
     tags(
-        (name = "Proportion API", description = "Upload Excel and Calculate proportion")
+        (name = "Proportion", description = "Calculate proportion based on bacteria name"),
+        (name = "Proportion", description = "Test API for proportion calculation")
     )
 )]
-
-
-
 pub struct ApiDoc;
