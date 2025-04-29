@@ -17,3 +17,6 @@ tower = "0.4"           # 미들웨어
 uuid = { version = "1", features = ["v4"] }     # 파일 이름 생성용
 mime = "0.3"            # 파일 타입 파악
 multipart = "0.18"      # 파일 업로드용
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tower-http = { version = "0.4", features = ["trace"] }
