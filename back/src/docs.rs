@@ -1,8 +1,3 @@
-use axum::{
-    extract::Path,
-    response::{IntoResponse, Json},
-    http::StatusCode,
-};
 use serde::{Serialize, Deserialize};
 use utoipa::{OpenApi, ToSchema};
 
@@ -16,18 +11,28 @@ pub struct UploadForm {
     file: String,
 }
 
+
+#[derive(Serialize, ToSchema)]
+pub struct YearlySummary {
+    pub year: i32,
+    pub mean_rslt: f64,
+    pub min_rslt: f64,
+    pub max_rslt: f64,
+    pub s_rate: f64,
+    pub count: usize,
+}
+
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        crate::routes::excel::upload_file,
-        crate::routes::excel::test_api
+        crate::routes::excel::proportion
     ),
     components(
-        schemas(UploadForm,UploadResponse)
+        schemas(YearlySummary,UploadForm,UploadResponse)
     ),
     tags(
-        (name = "Proportion", description = "Calculate proportion based on bacteria name"),
-        (name = "Proportion", description = "Test API for proportion calculation")
+        (name = "disk", description = "Calculate proportion based on bacteria name"),
     )
 )]
 pub struct ApiDoc;

@@ -1,112 +1,131 @@
 use axum::{
-    extract::{Multipart,Query},
+    extract::{Multipart,Query,Path},
     response::{IntoResponse, Json},
     http::StatusCode,
 };
-use serde::{Serialize, Deserialize};
-use utoipa::ToSchema;
-use tokio::fs::{self, File};
-use tokio::io::AsyncWriteExt;
-use uuid::Uuid;
-use std::collections::HashMap;
-use calamine::{Reader, open_workbook_auto, Xlsx};
-use axum::extract::Path;
 
-use crate::docs::UploadResponse;
-use crate::docs::UploadForm;
+use calamine::{Reader, Xlsx, DataType};
+use serde::Serialize;
+use std::{collections::HashMap, io::Cursor};
+use tokio::io::AsyncReadExt;
+
+use crate::docs::{UploadResponse, YearlySummary, UploadForm};
+
+
+#[derive(Serialize)]
+pub struct SimpleResponse {
+    pub message: String,
+}
 
 #[utoipa::path(
     post,
-    path = "/proportion/{bacteria}",
-    tag = "Proportion",
+    path = "/disk/proportion/{antibiotic}",
+    tag = "disk",
     request_body(
         content = UploadForm,
         content_type = "multipart/form-data",
         description = "Form with Excel file upload"
     ),
     params(
-        ("bacteria" = String, Path, description = "Bacteria name")
+        ("antibiotic" = String, Path, description = "antibiotic name")
     ),
     responses(
-        (status = 200, description = "Proportion calculated successfully", body = UploadResponse),
+        (status = 200, description = "Proportion calculated successfully", body = Vec<YearlySummary>),
         (status = 400, description = "Bad Request", body = UploadResponse),
     )
 )]
-pub async fn upload_file(Path(bacteria): Path<String>, mut multipart: Multipart) -> impl IntoResponse {
-    println!("📥 upload_file called with bacteria: {}", bacteria);
+pub async fn proportion(
+    Path(antibiotic): Path<String>,
+    mut multipart: Multipart,
+) -> Result<impl IntoResponse, (StatusCode, Json<SimpleResponse>)> {
 
-    match multipart.next_field().await {
-        Ok(Some(field)) => {
-            println!("📦 Got a field: {:?}", field.name());
-            // 나머지 로직
-            (StatusCode::OK, Json(UploadResponse { message: "ok".to_string() }))
-        },
-        Ok(None) => {
-            println!("⚠️ No field found in multipart.");
-            (StatusCode::BAD_REQUEST, Json(UploadResponse { message: "No file uploaded".to_string() }))
-        },
-        Err(err) => {
-            println!("❌ Multipart parse error: {:?}", err);
-            (StatusCode::BAD_REQUEST, Json(UploadResponse { message: format!("Multipart error: {}", err) }))
+    let mut bytes = None;
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        if let Some(name) = field.name() {
+            println!("📥 Received field: {}", name);
+            if name == "file" {
+                bytes = Some(field.bytes().await.unwrap());
+            }
         }
     }
-}
-#[utoipa::path(
-    post,
-    path = "/test",
-    tag = "Proportion",
-    params(
-        ("param" = String,Query, description = "Bacteria name")
-    ),
-    responses(
-        (status = 200, description = "Proportion calculated successfully", body = UploadResponse),
-        (status = 400, description = "Bad Request", body = UploadResponse),
-    )
-)]
-pub async fn test_api(Query(params): Query<HashMap<String, String>>) -> impl IntoResponse {
-    let param = params.get("param").cloned().unwrap_or_else(|| "".to_string());
+
+    let Some(data) = bytes else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(SimpleResponse {
+                message: "No file uploaded".to_string(),
+            }),
+        ));
+    };
+
+    let mut workbook = Xlsx::new(Cursor::new(data)).unwrap();
+    let range = workbook.worksheet_range_at(0).unwrap().unwrap();
+
+    let headers: Vec<String> = range
+        .rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|cell| cell.to_string())
+        .collect();
+
+    // Column indices
+    let year_idx = headers.iter().position(|h| h.trim() == "Prove_aar").unwrap(); //year
+    let rslt_idx = headers.iter().position(|h| h.trim() == antibiotic).unwrap(); //result
+    let res_type_idx = headers.iter().position(|h| h.trim() == &format!("{}_ResType", antibiotic)).unwrap(); //type - MIC or zone
+    let concl_idx = headers.iter().position(|h| h.trim() == &format!("{}_SIR", antibiotic)).unwrap(); //categorized value - I or R or S
+    let mut per_year: HashMap<i32, Vec<(f64, String)>> = HashMap::new();
+
+    // Iterate over the rows and collect data
+    // Skip the first row (header) and process the res
+    for (i, row) in range.rows().skip(1).enumerate() {
+        let res_type = row.get(res_type_idx).and_then(|c| c.get_string()).unwrap_or("");
+        if res_type.trim().eq_ignore_ascii_case("MIC") {
+            continue;
+        }
     
-    println!("📥 Received bacteria: {}", param);
+        let year = row.get(year_idx).and_then(|c| match c {
+            DataType::Int(i) => Some(*i as i32),
+            DataType::Float(f) => Some(*f as i32),
+            DataType::String(s) => s.parse::<i32>().ok(),
+            _ => None,
+        });
+        let rslt = row.get(rslt_idx).and_then(|c| match c {
+            DataType::Float(f) => Some(*f),
+            DataType::Int(i) => Some(*i as f64),
+            DataType::String(s) => s.trim().replace(",", ".").parse::<f64>().ok(),
+            _ => None,
+        });
+        
+        if let (Some(year), Some(value)) = (year, rslt) {
+            let concl = row.get(concl_idx).and_then(|c| c.get_string()).unwrap_or("?").to_string();
+            per_year.entry(year).or_default().push((value, concl));
+        }
+    }
+    
+    let mut summary = vec![];
 
-    (StatusCode::OK, Json(UploadResponse {
-        message: format!("Proportion calculation started for {}", param),
-    }))
+    for (year, entries) in per_year.into_iter() {
+        let count = entries.len();
+        let mean_rslt = entries.iter().map(|(v, _)| *v).sum::<f64>() / count as f64;
+        let min_rslt = entries.iter().map(|(v, _)| *v).fold(f64::MAX, f64::min);
+        let max_rslt = entries.iter().map(|(v, _)| *v).fold(f64::MIN, f64::max);
+        let s_count = entries.iter().filter(|(_, c)| c == "S").count();
+        let s_rate = (s_count as f64 / count as f64) * 100.0;
+    
+        summary.push(YearlySummary {
+            year,
+            mean_rslt,
+            min_rslt,
+            max_rslt,
+            s_rate,
+            count,
+        });
+    }
+    
+    summary.sort_by_key(|s| s.year);
+
+    Ok((StatusCode::OK, Json(summary)))
+
 }
 
-// #[utoipa::path(
-//     post,
-//     path = "/proportion/{bacteria}",
-//     tag = "Proportion",
-//     params(
-//         ("bacteria" = String, Path, description = "Bacteria name")
-//     ),
-//     request_body(
-//         content = UploadForm,
-//         description = "Excel file to upload",
-//         content_type = "multipart/form-data"
-//     ),
-//     responses(
-//         (status = 200, description = "File uploaded successfully", body = UploadResponse),
-//         (status = 400, description = "No file uploaded", body = UploadResponse),
-//     )
-// )]
-// pub async fn upload_file(Path(bacteria): Path<String>, mut multipart: Multipart) -> impl IntoResponse
-//  {
-//     println!("📥 upload_file called with bacteria: {}", bacteria);
-
-//     match multipart.next_field().await {
-//         Ok(Some(field)) => {
-//             println!("📦 Got a field: {:?}", field.name());
-//             // 나머지 로직
-//             (StatusCode::OK, Json(UploadResponse { message: "ok".to_string() }))
-//         },
-//         Ok(None) => {
-//             println!("⚠️ No field found in multipart.");
-//             (StatusCode::BAD_REQUEST, Json(UploadResponse { message: "No file uploaded".to_string() }))
-//         },
-//         Err(err) => {
-//             println!("❌ Multipart parse error: {:?}", err);
-//             (StatusCode::BAD_REQUEST, Json(UploadResponse { message: format!("Multipart error: {}", err) }))
-//         }
-//     }
-// }

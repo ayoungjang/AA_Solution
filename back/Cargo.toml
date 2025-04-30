@@ -21,3 +21,6 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 tower-http = { version = "0.4", features = ["trace"] }
 chrono = "0.4"
+polars = "0.37"
+plotters = "0.3"
+regex = "1"
